@@ -1,0 +1,18 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "adminUsername": {
+            "value": "sysadmin"
+        },
+        "adminPassword": {
+            "value": "T2li8Ts7Q8"
+        },
+        "autoShutdownStatus": {
+            "value": "Enabled"
+        },
+        "scenarioPrefix": {
+            "value": "jumpbox"
+        }
+    }
+}

@@ -1,0 +1,240 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "adminUsername": {
+      "defaultValue": "sysadmin",
+      "type": "string",
+      "metadata": {
+        "description": "User name for the Virtual Machine."
+      }
+    },
+    "adminPassword": {
+      "type": "securestring",
+      "metadata": {
+        "description": "SSH Key or password for the Virtual Machine. SSH key is recommended."
+      }
+    },
+    "location": {
+      "type": "string",
+      "defaultValue": "[resourceGroup().location]",
+      "metadata": {
+        "description": "Location for all resources."
+      }
+    },
+    "autoShutdownStatus": {
+      "defaultValue": "Enabled",
+      "type": "string"
+    },
+    "vmSize": {
+      "defaultValue": "Standard_D2as_v5",
+      "type": "string",
+      "metadata": {
+        "description": "Size of the Virtual Machine."
+      }
+    },
+    "scenarioPrefix": {
+      "defaultValue": "jumpbox",
+      "type": "string",
+      "metadata": {
+        "description": "A CIDR notation IP for Docker bridge."
+      }
+    }
+  },
+  "variables": {
+    "VMProfiles": [
+      {
+        "vmName": "linux",
+        "vmSize": "[parameters('vmSize')]",
+        "publisher": "Canonical",
+        "offer": "ubuntu-24_04-lts",
+        "sku": "server",
+        "version": "latest"
+      },
+      {
+        "vmName": "win",
+        "vmSize": "[parameters('vmSize')]",
+        "publisher": "MicrosoftWindowsDesktop",
+        "offer": "windows-11",
+        "sku": "win11-24h2-pro",
+        "version": "latest"
+      }
+    ],
+    "nicName": "[concat(parameters('scenarioPrefix'),'Nic')]",
+    "vNet": {
+      "name": "[concat(parameters('scenarioPrefix'),'-Vnet')]",
+      "addressSpacePrefix": "172.19.0.0/16",
+      "subnetName": "subnet0",
+      "subnetPrefix": "172.19.10.0/24"
+    },
+    "autoShutdown": {
+      "autoShutdownTime": "01:00",
+      "autoShutdownTimeZone": "UTC",
+      "autoShutdownNotificationStatus": "Disabled",
+      "autoShutdownNotificationLocale": "en"
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Network/networkSecurityGroups",
+      "apiVersion": "2024-05-01",
+      "name": "[concat(parameters('scenarioPrefix'), '-nsg')]",
+      "location": "[parameters('location')]",
+      "properties": {
+        "securityRules": [
+          {
+            "name": "AllowSSH",
+            "properties": {
+              "priority": 1000,
+              "access": "Allow",
+              "direction": "Inbound",
+              "destinationPortRange": "22",
+              "protocol": "TCP",
+              "sourceAddressPrefix": "*",
+              "sourcePortRange": "*",
+              "destinationAddressPrefix": "*"
+            }
+          },
+          {
+            "name": "AllowRDP",
+            "properties": {
+              "priority": 1001,
+              "access": "Allow",
+              "direction": "Inbound",
+              "destinationPortRange": "3389",
+              "protocol": "TCP",
+              "sourceAddressPrefix": "*",
+              "sourcePortRange": "*",
+              "destinationAddressPrefix": "*"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "type": "Microsoft.Network/virtualNetworks",
+      "apiVersion": "2024-05-01",
+      "name": "[variables('vNet').name]",
+      "location": "[parameters('location')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/networkSecurityGroups', concat(parameters('scenarioPrefix'), '-nsg'))]"
+      ],
+      "properties": {
+        "addressSpace": {
+          "addressPrefixes": [
+            "[variables('vNet').addressSpacePrefix]"
+          ]
+        },
+        "subnets": [
+          {
+            "name": "[variables('vNet').subnetName]",
+            "properties": {
+              "addressPrefix": "[variables('vNet').subnetPrefix]",
+              "networkSecurityGroup": {
+                "id": "[resourceId('Microsoft.Network/networkSecurityGroups', concat(parameters('scenarioPrefix'), '-nsg'))]"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "type": "Microsoft.Network/networkInterfaces",
+      "apiVersion": "2018-11-01",
+      "name": "[concat(variables('nicName'), copyIndex())]",
+      "location": "[parameters('location')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/virtualNetworks/', variables('vNet').name)]"
+      ],
+      "copy": {
+        "name": "nic-copy",
+        "count": 2
+      },
+      "properties": {
+        "ipConfigurations": [
+          {
+            "name": "ipconfig1",
+            "properties": {
+              "privateIPAllocationMethod": "Dynamic",
+              "subnet": {
+                "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vNet').name, 'subnet0')]"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "type": "Microsoft.Compute/virtualMachines",
+      "apiVersion": "2024-07-01",
+      "name": "[concat(parameters('scenarioPrefix'), variables('VMProfiles')[copyIndex()].vmName)]",
+      "location": "[parameters('location')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/networkInterfaces/', concat(variables('nicName'), copyIndex()))]"
+      ],
+      "copy": {
+        "name": "vmcopy",
+        "count": 2
+      },
+      "properties": {
+        "priority": "Spot",
+        "hardwareProfile": {
+          "vmSize": "[variables('VMProfiles')[copyIndex()].vmSize]"
+        },
+        "osProfile": {
+          "computerName": "[concat(parameters('scenarioPrefix'), variables('VMProfiles')[copyIndex()].vmName)]",
+          "adminUsername": "[parameters('adminUsername')]",
+          "adminPassword": "[parameters('adminPassword')]"
+        },
+        "storageProfile": {
+          "imageReference": {
+            "publisher": "[variables('VMProfiles')[copyIndex()].publisher]",
+            "offer": "[variables('VMProfiles')[copyIndex()].offer]",
+            "sku": "[variables('VMProfiles')[copyIndex()].sku]",
+            "version": "[variables('VMProfiles')[copyIndex()].version]"
+          },
+          "osDisk": {
+            "createOption": "FromImage",
+            "managedDisk": {
+              "storageAccountType": "StandardSSD_LRS"
+            }
+          }
+        },
+        "networkProfile": {
+          "networkInterfaces": [
+            {
+              "id": "[resourceId('Microsoft.Network/networkInterfaces',concat(variables('nicName'), copyIndex()))]"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "[concat('shutdown-computevm-', concat(parameters('scenarioPrefix'), variables('VMProfiles')[copyIndex()].vmName))]",
+      "type": "Microsoft.DevTestLab/schedules",
+      "apiVersion": "2018-09-15",
+      "location": "[parameters('location')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Compute/virtualMachines/', concat(parameters('scenarioPrefix'), variables('VMProfiles')[copyIndex()].vmName))]"
+      ],
+      "copy": {
+        "name": "schedcopy",
+        "count": 2
+      },
+      "properties": {
+        "status": "[parameters('autoShutdownStatus')]",
+        "taskType": "ComputeVmShutdownTask",
+        "dailyRecurrence": {
+          "time": "[variables('autoShutdown').autoShutdownTime]"
+        },
+        "timeZoneId": "[variables('autoShutdown').autoShutdownTimeZone]",
+        "targetResourceId": "[resourceId('Microsoft.Compute/virtualMachines', concat(parameters('scenarioPrefix'), variables('VMProfiles')[copyIndex()].vmName))]",
+        "notificationSettings": {
+          "status": "[variables('autoShutdown').autoShutdownNotificationStatus]",
+          "notificationLocale": "[variables('autoShutdown').autoShutdownNotificationLocale]",
+          "timeInMinutes": 30
+        }
+      }
+    }
+  ]
+}
