@@ -64,3 +64,19 @@ az network lb outbound-rule create \
 
 echo "Load balancer '$LOAD_BALANCER_NAME' created, NICs added to backend pool '$BACKEND_POOL_NAME', and outbound rule '$OUTBOUND_RULE_NAME' configured."
 
+# Installation after VM creation
+echo "Installing ubuntu-desktop on VM 'jumpboxlinux'..."
+RUN_SCRIPT=$(cat <<'EOF'
+#!/bin/bash
+apt-get update && apt-get install -y ubuntu-desktop xrdp
+EOF
+)
+az vm run-command invoke \
+  --resource-group "$RESOURCE_GROUP" \
+  --name "jumpboxlinux" \
+  --command-id RunShellScript \
+  --scripts "$RUN_SCRIPT"
+
+# Warn user to change the default VM password (red background)
+echo -e '\e[41;97mDeployment completed. Please change the default VM password!\e[0m'
+
