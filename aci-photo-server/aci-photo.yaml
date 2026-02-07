@@ -26,7 +26,7 @@ properties:
         port: 1787
     type: "Private"
   subnetIds:
-  - "id": "/subscriptions/3475e05d-2753-47d4-9337-98dd2c5cf78a/resourceGroups/rg-eastasia/providers/Microsoft.Network/virtualNetworks/rg-eastasia-vnet/subnets/aci"
+  - "id": "/subscriptions/6b48e377-dbbd-473d-b9d3-f5d53eeb2325/resourceGroups/rg-canadacentral/providers/Microsoft.Network/virtualNetworks/labvnet/subnets/aci"
   volumes:
   - name: pslibrary
     azureFile:
